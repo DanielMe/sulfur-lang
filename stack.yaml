@@ -1,0 +1,8 @@
+flags: {}
+extra-package-dbs: []
+packages:
+- '.'
+extra-deps:
+- RepLib-0.5.3.5
+- unbound-0.4.4
+resolver: lts-3.18
