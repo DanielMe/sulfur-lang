@@ -1,4 +1,4 @@
-name:                 Language
+name:                 SulfurLang
 version:              0.1.0.0
 synopsis:             
 -- description:
@@ -17,10 +17,10 @@ library
   exposed-modules:      AST,
                         Syntax
   extensions:           OverloadedStrings
-  build-depends:        base >= 4.7 && < 5,
+  build-depends:        base >= 4.8,
+                        prelude-extras >= 0.4,
                         parsec,
                         bound,
-                        prelude-extras,
                         containers,
                         transformers,
                         text
@@ -33,8 +33,12 @@ test-suite spec
   ghc-options:          -Wall
   hs-source-dirs:       test
   main-is:              Spec.hs
-  build-depends:        base == 4.*,
-                        Language,
+  build-depends:        base >= 4.8,
                         hspec == 2.*,
+                        prelude-extras >= 0.4,
                         parsec,
-                        text
+                        bound,
+                        containers,
+                        transformers,
+                        text,
+                        SulfurLang
