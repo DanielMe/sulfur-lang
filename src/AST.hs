@@ -35,6 +35,7 @@ data Term a
 -- | The definition of a pattern in the sulfur language
 data Pattern f a = VarPattern
                  | WildcardPattern
+                 | LiteralPattern Literal
                  | AsPattern (Pattern f a)
                  | ConstructorPattern String [Pattern f a]
                  | ViewPattern (Scope Int f a) (Pattern f a)
@@ -43,9 +44,10 @@ data Pattern f a = VarPattern
 instance Bound Pattern where
   VarPattern >>>= _ = VarPattern
   WildcardPattern >>>= _ = WildcardPattern
-  AsPattern p >>>= f = AsPattern (p >>>= f)
-  ConstructorPattern g ps >>>= f = ConstructorPattern g (map (>>>= f) ps)
-  ViewPattern e p >>>= f = ViewPattern (e >>>= f) (p >>>= f)
+  LiteralPattern lit >>>= _ = LiteralPattern lit
+  AsPattern subPattern >>>= f = AsPattern (subPattern >>>= f)
+  ConstructorPattern g subPatterns >>>= f = ConstructorPattern g (map (>>>= f) subPatterns)
+  ViewPattern e subPattern >>>= f = ViewPattern (e >>>= f) (subPattern >>>= f)
 
 
 instance Eq1 Term
@@ -87,9 +89,9 @@ define var (Nothing) valueTerm = Define $ abstract1 var valueTerm
 --
 -- In the Sulfur language, patterns form the left hand side of a lambda expression.
 data PatternBuilder a = PatternBuilder {
-        buildPattern :: [a] -> Pattern Term a,
-        bindings :: [a]
-    }
+    buildPattern :: [a] -> Pattern Term a,
+    bindings :: [a]
+}
 
 -- | Create a new PatternBuilder for a pattern that matches the entire expression and captures it in the symbol passed
 -- | as the first argument.
@@ -112,6 +114,13 @@ asPattern :: a -> PatternBuilder a -> PatternBuilder a
 asPattern a (PatternBuilder p as) = PatternBuilder {
     buildPattern = \ bs -> AsPattern ( p ( a:bs ) ),
     bindings = (a:as)
+}
+
+-- | Creates a new PatternBuilder that matches the given literal but does not capture anything.
+literalPattern :: Literal -> PatternBuilder a
+literalPattern lit = PatternBuilder {
+    buildPattern = const (LiteralPattern lit),
+    bindings = []
 }
 
 -- | Create a new PatternBuilder that matches a given data constructor with a list of subpatterns for each of the
