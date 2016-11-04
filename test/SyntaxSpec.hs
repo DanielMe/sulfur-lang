@@ -86,13 +86,13 @@ spec = do
             in (parseSimple term expression) `shouldSucceedWith` (App (Var "foo") (Lit (IntLit 123)))
         it "correctly parses a simple lambda expression" $
             let expression = "( x -> bar x )"
-            in (parseSimple term expression) `shouldSucceedWith` (lambda (varPattern "x") (App (Var "bar") (Var "x")))
+            in (parseSimple term expression) `shouldSucceedWith` (simpleLambda (varPattern "x") (App (Var "bar") (Var "x")))
         it "correctly parses lambda inline application" $
             let expression = "( x -> bar x ) 5"
-            in (parseSimple term expression) `shouldSucceedWith` (App (lambda (varPattern "x") (App (Var "bar") (Var "x"))) (Lit (IntLit 5)))
+            in (parseSimple term expression) `shouldSucceedWith` (App (simpleLambda (varPattern "x") (App (Var "bar") (Var "x"))) (Lit (IntLit 5)))
         it "correctly parses lambda inline application without spaces" $
             let expression = "(x->bar x)5"
-            in (parseSimple term expression) `shouldSucceedWith` (App (lambda (varPattern "x") (App (Var "bar") (Var "x"))) (Lit (IntLit 5)))
+            in (parseSimple term expression) `shouldSucceedWith` (App (simpleLambda (varPattern "x") (App (Var "bar") (Var "x"))) (Lit (IntLit 5)))
         it "parses multiple successive applications left associatively" $
             let expression = "foo   bar   baz"
             in (parseSimple term expression) `shouldSucceedWith` (App (App (Var "foo") (Var "bar")) (Var "baz"))
@@ -127,25 +127,25 @@ spec = do
     describe "Lambda parsing" $ do
         it "unfolds multiple lambdas given sequence of bound variables" $
             let expression = "x y z -> bar x y"
-            in (parseSimple term expression) `shouldSucceedWith` (lambda (varPattern "x") (lambda (varPattern "y") (lambda (varPattern "z") (App (App (Var "bar") (Var "x")) (Var "y")) )))
+            in (parseSimple term expression) `shouldSucceedWith` (simpleLambda (varPattern "x") (simpleLambda (varPattern "y") (simpleLambda (varPattern "z") (App (App (Var "bar") (Var "x")) (Var "y")) )))
         it "parses multiple lambdas in sequence" $
             let expression = "x -> y -> z -> bar x y"
-            in (parseSimple term expression) `shouldSucceedWith`  (lambda (varPattern "x") (lambda (varPattern "y") (lambda (varPattern "z") (App (App (Var "bar") (Var "x")) (Var "y")) )))
+            in (parseSimple term expression) `shouldSucceedWith`  (simpleLambda (varPattern "x") (simpleLambda (varPattern "y") (simpleLambda (varPattern "z") (App (App (Var "bar") (Var "x")) (Var "y")) )))
         it "parses multiple lambdas in sequence with parentheses" $
             let expression = "x -> (y ->( z -> bar x y) )"
-            in (parseSimple term expression) `shouldSucceedWith`  (lambda (varPattern "x") (lambda (varPattern "y") (lambda (varPattern "z") (App (App (Var "bar") (Var "x")) (Var "y")) )))
+            in (parseSimple term expression) `shouldSucceedWith`  (simpleLambda (varPattern "x") (simpleLambda (varPattern "y") (simpleLambda (varPattern "z") (App (App (Var "bar") (Var "x")) (Var "y")) )))
         it "parses a lambda applied to a lambda" $
             let expression = "(x->x)( x->x )"
-            in (parseSimple term expression) `shouldSucceedWith` (App (lambda (varPattern "x") (Var "x")) (lambda (varPattern "y") (Var "y")))
+            in (parseSimple term expression) `shouldSucceedWith` (App (simpleLambda (varPattern "x") (Var "x")) (simpleLambda (varPattern "y") (Var "y")))
         it "parses a lambda that maps to a number" $
             let expression = "x->5"
-            in (parseSimple term expression) `shouldSucceedWith` (lambda (varPattern "x") (Lit $ IntLit 5))
+            in (parseSimple term expression) `shouldSucceedWith` (simpleLambda (varPattern "x") (Lit $ IntLit 5))
         it "parses a lambda that maps to a string" $
             let expression = "x->\"5\""
-            in (parseSimple term expression) `shouldSucceedWith` (lambda (varPattern "x") (Lit $ StringLit "5"))
---        it "parses a lambda containing a pattern that is a literal" $
---            let expression = "x 5 y -> 5"
---            in (parseSimple term expression) `shouldSucceedWith` (lambda "x" (Pattern $ Lit $ IntLit 5))
+            in (parseSimple term expression) `shouldSucceedWith` (simpleLambda (varPattern "x") (Lit $ StringLit "5"))
+--       it "parses a simpleLambda containing a pattern that is a literal" $
+--           let expression = "x 5 y -> 5"
+--           in (parseSimple term expression) `shouldSucceedWith` (simpleLambda "x" (Pattern $ Lit $ IntLit 5))
 
 
 

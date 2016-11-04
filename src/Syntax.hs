@@ -12,6 +12,7 @@ import AST
 import Data.Functor.Identity
 import Control.Monad
 import Debug.Trace (trace)
+import Data.List.NonEmpty ( NonEmpty(..) )
 
 -- Indentation sensitive Parsec monad.
 type IParsec a = Parsec Text ParseState a
@@ -200,7 +201,8 @@ parseIdentifierSequence = do
     skipSpaces
     maybeLambdaAbstraction <- optionMaybe (reservedOperator "->" >> skipSpaces >> term) :: IParsec (Maybe (Term String))
     return $ case maybeLambdaAbstraction of
-        (Just boundTerm) -> foldr lambda (boundTerm) (map varPattern (firstIdentifier:otherIdentifiers))
+        -- TODO: multi line lambdas
+        (Just boundTerm) -> foldr simpleLambda (boundTerm) (map varPattern (firstIdentifier:otherIdentifiers))
         (Nothing) -> foldl App (Var firstIdentifier) (map Var otherIdentifiers)
     where
         parseMoreIdentifiers = do

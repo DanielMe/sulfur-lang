@@ -17,6 +17,7 @@ import Prelude.Extras
 import Data.List
 import Data.Foldable
 import Data.Traversable
+import Data.List.NonEmpty (NonEmpty(..))
 
 
 -- | The definition of a term in the sulfur language
@@ -25,11 +26,14 @@ import Data.Traversable
 data Term a
     = App (Term a) (Term a)
     | Var a
-    | Lam Int (Pattern Term a) (Scope Int Term a)
+    | Match (NonEmpty (Lambda a))
     | Lit Literal
     | Typed (Term a) (Term a) -- Typed type value
     | Define (Scope () Term a)
     deriving (Eq,Ord,Show,Read,Functor,Foldable,Traversable)
+
+data Lambda a = Lambda Int (Pattern Term a) (Scope Int Term a)
+                deriving (Eq,Ord,Show,Read,Functor,Foldable,Traversable)
 
 
 -- | The definition of a pattern in the sulfur language
@@ -54,6 +58,10 @@ instance Eq1 Term
 instance Ord1 Term
 instance Show1 Term
 instance Read1 Term
+instance Eq1 Lambda
+instance Ord1 Lambda
+instance Show1 Lambda
+instance Read1 Lambda
 
 instance Applicative Term where
     pure = Var
@@ -63,7 +71,8 @@ instance Monad Term where
     return = Var
     (Var a) >>= f = f a
     (App x y) >>= f = App (x >>= f) (y >>= f)
-    (Lam n p e) >>= f = Lam n (p >>>= f) (e >>>= f)
+    (Match lambdas) >>= f = Match (fmap lambdaBind lambdas)
+        where lambdaBind (Lambda n p e) = Lambda n (p >>>= f) (e >>>= f)
     (Lit lit) >>= _ = (Lit lit)
     (Typed typeTerm valueTerm) >>= f = Typed (typeTerm >>= f) (valueTerm >>= f)
     (Define e) >>= f =  Define ( e >>>= f)
@@ -72,9 +81,9 @@ instance Monad Term where
 --
 -- A lambda expression consists of a pattern on the left hand side of the arrow and an expression on the right hand
 -- side.
-lambda :: Eq a => (PatternBuilder a) -> Term a -> Term a
+lambda :: Eq a => (PatternBuilder a) -> Term a -> Lambda a
 lambda (PatternBuilder buildPattern bindings) expression =
-    Lam (length bindings) (buildPattern []) (abstract (`elemIndex` bindings) expression)
+    Lambda (length bindings) (buildPattern []) (abstract (`elemIndex` bindings) expression)
 
 -- | A simplified constructor for definitions in the sulfur language
 --
@@ -133,6 +142,10 @@ constructorPattern constructorName subPatterns = PatternBuilder {
     buildSubPatterns (builder:patterns) bs = (buildPattern builder bs) : buildSubPatterns patterns (bs ++ (bindings builder))
     buildSubPatterns [] _ = []
 
+-- | A convenience method to construct a simple lambda that only matches one variable and binds it
+-- | to some term
+simpleLambda :: (Eq a) => (PatternBuilder a) -> Term a -> Term a
+simpleLambda pattern term = Match ((lambda pattern term) :| [])
 
 data Literal
     = StringLit String
