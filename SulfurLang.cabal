@@ -15,7 +15,8 @@ cabal-version:        >=1.10
 
 library
   exposed-modules:      AST,
-                        Syntax
+                        Syntax,
+                        Data.List.NonEmpty
   extensions:           OverloadedStrings
   build-depends:        base >= 4.8,
                         prelude-extras >= 0.4,
