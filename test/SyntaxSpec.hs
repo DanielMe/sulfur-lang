@@ -6,6 +6,7 @@ import Syntax
 import Text.Parsec
 import Data.Text
 import AST
+import Data.List.NonEmpty (NonEmpty(..))
 
 
 shouldSucceedWith :: (Eq a, Show a) => (Either ParseError a) -> a -> Expectation
@@ -143,9 +144,46 @@ spec = do
         it "parses a lambda that maps to a string" $
             let expression = "x->\"5\""
             in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (Lit $ StringLit "5"))
---       it "parses a matchLambda containing a pattern that is a literal" $
---           let expression = "x 5 y -> 5"
---           in (parseSimple term expression) `shouldSucceedWith` (matchLambda "x" (Pattern $ Lit $ IntLit 5))
-
+    describe "Parsing of a pattern matching expression" $ do
+       it "parses a simple lamblda containing a pattern that is a literal" $
+           let expression = "x 5 y -> 5"
+           in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (matchLambda (literalPattern $ IntLit 5) (matchLambda (varPattern "y") (Lit $ IntLit 5))))
+       it "parses a pattern match consisting of a literal and a variable" $
+           let expression = unlines [
+                "\"MyString\" ->   5" ,
+                "x            ->   6" ]
+               firstLambda = lambda (literalPattern $ StringLit "MyString") (Lit $ IntLit 5)
+               secondLambda = lambda (varPattern "x") (Lit $ IntLit 6)
+           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+       it "parses a pattern match consisting of two different constructors" $
+           let expression = unlines [
+                "(Foo x) -> x" ,
+                "(Bar y z) -> y" ]
+               firstLambda = lambda (constructorPattern "Foo" [varPattern "x"]) (Var "x")
+               secondLambda = lambda (constructorPattern "Bar" [varPattern "y", varPattern "z"]) (Var "y")
+           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+       it "parses a pattern match consisting of constructors and literals" $
+           let expression = unlines [
+                "(Foo \"x\") -> x" ,
+                "(Bar 1 2) -> y" ]
+               firstLambda = lambda (constructorPattern "Foo" [literalPattern $ StringLit "x"]) (Var "x")
+               secondLambda = lambda (constructorPattern "Bar" [literalPattern $ IntLit 1, literalPattern $ IntLit 2]) (Var "y")
+           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+       it "parses a pattern match consisting of nullary constructors" $
+           let expression = unlines [
+                "Foo -> x" ,
+                "Bar -> y" ]
+               firstLambda = lambda (constructorPattern "Foo" []) (Var "x")
+               secondLambda = lambda (constructorPattern "Bar" []) (Var "y")
+           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+       it "parses a pattern match consisting of one variable, one constructor and one literal" $
+           let expression = unlines [
+                "x -> x" ,
+                "Foo -> y",
+                "5   -> y"]
+               firstLambda = lambda (varPattern "x") (Var "x")
+               secondLambda = lambda (constructorPattern "Foo" []) (Var "y")
+               thirdLambda = lambda (literalPattern $ IntLit 5) (Var "y")
+           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
 
 
