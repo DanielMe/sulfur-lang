@@ -1,0 +1,45 @@
+trait (Monad m) requires
+  | 'flatMap of (m a) -> (a -> m b) -> (m b)
+  | 'unit of a -> (m a)
+
+trait (Functor f) requires
+  | 'map of (f a) -> (a -> b) -> (f b)
+  | 'unit of a -> (f a)
+
+instance (functorFromMonad f)
+  with Monad f
+  let
+  | 'map as functor f -> functor.flatMap ( x -> unit (f x) )
+  | 'unit as unit
+
+
+instance listIsFunctor
+  overriding (functorFromMonad List)
+  let
+    | 'map as mapList
+    | 'unit as x -> (Element x Empty)
+    define mapList as
+      | (Element x xs) f -> Element (f x) (xs.mapList f)
+      | Empty -> Empty
+
+define doubleAll
+  of List n -> List n
+    with Numeric n
+  as xs -> xs.map ( x -> x * 2 )
+
+
+define Tree
+  of Type -> Type
+  as e -> data
+    | linked 'Node [Tree e, e, Tree e]
+    | linked 'Leaf []
+
+define map
+  of (collection a) -> (a -> b) -> (collection b)
+    with Traversable (collection a)
+    with RegionBound (RegionOf a) <= (parent LocalRegion)
+    with Free a
+  as
+    | (NonEmpty entry rest) f -> ( NonEmpty (f entry) (rest.map f) )
+    | Empty f -> Empty
+
