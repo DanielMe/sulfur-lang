@@ -22,6 +22,47 @@ import Data.List.NonEmpty (NonEmpty(..))
 
 -- | The definition of a term in the sulfur language
 --
+-- A term can be an application of one term to another term. An application is basically a
+-- a function call.
+-- For example
+--
+-- @
+--   App (Var "f") (Lit $ IntLit 5)
+-- @
+--
+-- should be interpreted as applying the function bound to the symbol "f" to the literal integer
+-- value 5.
+--
+-- A term can also be a variable symbol.
+-- For example
+--
+-- @
+--   Var "myVariable"
+-- @
+--
+-- refers to a symbol "myVariable" which is defined elsewhere.
+--
+-- A term can also be a pattern matching. This is a generalisation of a lambda expression that also
+-- includes built in conditionals.
+-- The simplest example of pattern matching is a simple lambda expression:
+--
+-- @
+--   Match ( (lambda (varPattern "x") (Var "x")) :| [] )
+-- @
+--
+-- This corresponds to the lambda
+--
+-- @
+--   x -> x
+-- @
+--
+-- (See below for a discussion of the lambda and varPattern functions)
+-- A pattern matching consists of a nonempty list of lambdas each of which bind a pattern to a term.
+-- In the above example there is only one lambda expression in that list which binds the term
+-- (Var "x") to the pattern (varPattern "x").
+--
+-- A term may also be a literal value.
+--
 --
 data Term a
     = App (Term a) (Term a)
