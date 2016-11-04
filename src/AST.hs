@@ -185,8 +185,8 @@ constructorPattern constructorName subPatterns = PatternBuilder {
 
 -- | A convenience method to construct a simple lambda that only matches one variable and binds it
 -- | to some term
-simpleLambda :: (Eq a) => (PatternBuilder a) -> Term a -> Term a
-simpleLambda pattern term = Match ((lambda pattern term) :| [])
+matchLambda :: (Eq a) => (PatternBuilder a) -> Term a -> Term a
+matchLambda pattern term = Match ((lambda pattern term) :| [])
 
 data Literal
     = StringLit String

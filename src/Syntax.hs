@@ -202,7 +202,7 @@ parseIdentifierSequence = do
     maybeLambdaAbstraction <- optionMaybe (reservedOperator "->" >> skipSpaces >> term) :: IParsec (Maybe (Term String))
     return $ case maybeLambdaAbstraction of
         -- TODO: multi line lambdas
-        (Just boundTerm) -> foldr simpleLambda (boundTerm) (map varPattern (firstIdentifier:otherIdentifiers))
+        (Just boundTerm) -> foldr matchLambda (boundTerm) (map varPattern (firstIdentifier:otherIdentifiers))
         (Nothing) -> foldl App (Var firstIdentifier) (map Var otherIdentifiers)
     where
         parseMoreIdentifiers = do
