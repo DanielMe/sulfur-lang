@@ -13,6 +13,7 @@ import Data.Functor.Identity
 import Control.Monad
 import Debug.Trace (trace)
 import Data.List.NonEmpty ( NonEmpty(..) )
+import qualified Data.List.NonEmpty as NonEmpty
 
 -- Indentation sensitive Parsec monad.
 type IParsec a = Parsec Text ParseState a
@@ -179,13 +180,22 @@ align :: IParsec ()
 align = ensureIndentation (==) <?> "a block on the same indentation level"
 
 
+nextWord :: IParsec a -> IParsec a
+nextWord nextParser = skipSpaces >> nextParser
+
+nextLineIndented :: IParsec a -> IParsec a
+nextLineIndented nextParser = skipSpaces >> newline >> skipBlankLines >> skipSpaces >> indented >> (withIndentation nextParser)
+
+nextLineAligned :: IParsec a -> IParsec a
+nextLineAligned nextParser = skipSpaces >> newline >> skipBlankLines >> skipSpaces >> align >> (withIndentation nextParser)
+
 nextWordOrIndented :: IParsec a -> IParsec a
-nextWordOrIndented nextParser = try (skipSpaces >> nextParser)
-                            <|> try (skipSpaces >> newline >> skipBlankLines >> skipSpaces >> indented >> (withIndentation nextParser))
+nextWordOrIndented nextParser = try (nextWord nextParser)
+                            <|> try (nextLineIndented nextParser)
 
 nextWordOrAligned :: IParsec a -> IParsec a
-nextWordOrAligned nextParser =  try (skipSpaces >> nextParser)
-                            <|> try (skipSpaces >> newline >> skipBlankLines >> skipSpaces >> align >> (withIndentation nextParser))
+nextWordOrAligned nextParser =  try (nextWord nextParser)
+                            <|> try (nextLineAligned nextParser)
 
 
 definition :: IParsec (Term String)
