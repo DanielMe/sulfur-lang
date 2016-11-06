@@ -210,6 +210,30 @@ definition = withIndentation $ do
          return (parsedTypeTerm, parsedValueTerm)
        return $ define name (Just parsedTypeTerm) parsedValueTerm
 
+patternOnNextLine :: IParsec ((Term String) -> (Term String) -> (Term String))
+patternOnNextLine = do
+    skipSpaces
+    newline
+    skipBlankLines
+    skipSpaces
+    align
+    return $ \ (Match xs) (Match ys) -> (Match $ NonEmpty.append xs ys)
+
+
+multilinePattern :: IParsec (Term String)
+multilinePattern = patternMatching `chainl1` patternOnNextLine
+
+
+-- | Parses a term at the top level relative to a 'define' expression
+--
+-- Top level means at the beginning of a new block (as opposed to being a part of a sub
+-- expression for instance).
+-- Every regular term can also be a top level term.
+-- However, a top level term can also be a multiline pattern matching which is not allowed
+-- in a nested expression.
+topLevelTerm :: IParsec (Term String)
+topLevelTerm = try multilinePattern
+            <|> try term
 
 -- | Parses a term in the sulfur language
 --
