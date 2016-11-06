@@ -73,6 +73,23 @@ parseInteger = integerLiteral <?> "an integer literal"
             n <- parseNat
             return $ Lit (IntLit $ f n)
 
+parseIntPattern :: IParsec (PatternBuilder a)
+parseIntPattern = integerLiteral <?> "an integer literal"
+    where
+        integerLiteral = do
+            f <- parseSign
+            n <- parseNat
+            return $ literalPattern (IntLit $ f n)
+
+parseStringPattern :: IParsec (PatternBuilder a)
+parseStringPattern = stringLiteral  <?> "a string literal"
+   where
+       stringLiteral = do
+           char '"'
+           strings <- many character
+           char '"'
+           return $ literalPattern $ StringLit (concat strings)
+
 parseNat :: IParsec Integer
 parseNat = do
            intAsString <- many1 digit
