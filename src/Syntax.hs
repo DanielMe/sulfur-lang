@@ -193,47 +193,108 @@ definition = withIndentation $ do
     reservedWord "define"
     nextWordOrIndented $ do
        name <- identifier
-       (typeTerm, valueTerm) <- nextWordOrIndented $ do
+       (parsedTypeTerm, parsedValueTerm) <- nextWordOrIndented $ do
          reservedWord "of"
-         typeTerm <- nextWordOrIndented term
-         valueTerm <- nextWordOrAligned $ (reservedWord "as") >> (nextWordOrIndented term)
-         return (typeTerm, valueTerm)
-       return $ define name (Just typeTerm) valueTerm
+         parsedTypeTerm <- nextWordOrIndented typeTerm
+         parsedValueTerm <- nextWordOrAligned $ (reservedWord "as") >> (nextWordOrIndented term)
+         return (parsedTypeTerm, parsedValueTerm)
+       return $ define name (Just parsedTypeTerm) parsedValueTerm
 
 
+-- | Parses a term in the sulfur language
+--
+-- We distinguish two main cases: A term can be a list of terms which corresponds to an
+-- application if there is more than one or a simple term (literal or variable) if there is just
+-- one.
+--
+-- The second main case is that the term is a pattern matching or a lambda expression.
+-- This case is identified by the presence of a "->" symbol which follows a list of pattern expressions.
+--
+-- In some cases it might be only the "->" symbol that uniquely determines whether an expression
+-- is an application or a lambda abstraction. For example:
+--
+-- @
+--   a b c 5
+--   a b c 5 -> a
+-- @
+--
+-- The first expression is interpreted as "a" applied to "b" applied to "c" applied to the literal 5.do
+-- The second expression is interpreted as a lambda with three input variables and one literal pattern
+-- which matches the value 5. (This will then be resolved into 4 successive pattern matching expressions.)
 term :: IParsec (Term String)
-term = termWithoutApplication `chainl1` (try parseApplication)
+term = try patternMatching <|> try simpleTermOrApplication
 
-termWithoutApplication :: IParsec (Term String)
-termWithoutApplication = (parens term)
-    <|> try parseString
-    <|> try parseInteger
-    <|> try parseIdentifierSequence
+typeTerm :: IParsec (Term String)
+typeTerm = fmap Var identifier -- TODO parse an actual type expression
 
-parseIdentifierSequence :: IParsec (Term String)
-parseIdentifierSequence = do
-    firstIdentifier <- identifier :: IParsec String
-    skipSpaces
-    otherIdentifiers <- chainl (try parseSingletonIdentifier) (try parseMoreIdentifiers) [] :: IParsec [String]
-    skipSpaces
-    maybeLambdaAbstraction <- optionMaybe (reservedOperator "->" >> skipSpaces >> term) :: IParsec (Maybe (Term String))
-    return $ case maybeLambdaAbstraction of
-        -- TODO: multi line lambdas
-        (Just boundTerm) -> foldr matchLambda (boundTerm) (map varPattern (firstIdentifier:otherIdentifiers))
-        (Nothing) -> foldl App (Var firstIdentifier) (map Var otherIdentifiers)
-    where
-        parseMoreIdentifiers = do
-            skipSpaces
-            notFollowedBy (char ')')
-            notFollowedBy anyReserved
-            return (++)
-        parseSingletonIdentifier = do
-            ident <- identifier
-            return [ident]
+-- | Parse a nonempty list of terms
+--
+-- If the list of terms is a singleton, the result is just the term itself.
+-- If this list contains more than one element, this is the recursive application of the head of the
+-- list to the application constructed from the tail of the list.
+-- For example:
+--
+-- @
+--  a
+--  a b c
+-- @
+--
+-- The first line will parse to (Var "a"). The second line will be parsed as
+-- (App (Var "a") (App (Var "b") (Var "c"))).
+--
+simpleTermOrApplication :: IParsec (Term String)
+simpleTermOrApplication = simpleTerm `chainl1` (try parseApplication)
 
-parseApplication :: IParsec (Term a -> Term a -> Term a)
+-- | Parses a simple term which is defined as a term that is not an application or a lambda abstraction.
+--
+-- A simple term is hence either a literal or a variable. It can also be a pair of parentheses which
+-- in turn contain a rich term which can be an application or a lambda abstraction.
+simpleTerm = (parens term)
+             <|> try parseString
+             <|> try parseInteger
+             <|> try (fmap Var identifier)
+
+patternMatching :: IParsec (Term String)
+patternMatching = do
+                  patterns <- (fmap pure simplePatternTerm) `chainl1` (try parseMultiplePatterns)
+                  skipSpaces
+                  reservedOperator "->"
+                  skipSpaces
+                  boundTerm <- term
+                  return $ foldr matchLambda boundTerm patterns
+
+-- | Any pattern including a constructor pattern
+patternTerm :: IParsec (PatternBuilder String)
+patternTerm = try parseConstructorPattern
+            <|> try parseConstructorPattern
+            <|> try simplePatternTerm
+
+-- | A pattern term without constructor patterns (unless wrapped in parentheses)
+simplePatternTerm :: IParsec (PatternBuilder String)
+simplePatternTerm = (parens patternTerm)
+            <|> try parseIntPattern
+            <|> try parseStringPattern
+            <|> try parseVariablePattern
+
+parseVariablePattern :: IParsec (PatternBuilder String)
+parseVariablePattern = fmap varPattern identifier
+
+parseConstructorPattern :: IParsec (PatternBuilder String)
+parseConstructorPattern = do
+    constructor <- identifier
+    subPatterns <- chainl (fmap pure simplePatternTerm) (try parseMultiplePatterns) []
+    return $ constructorPattern constructor subPatterns
+
+parseApplication :: IParsec (Term String -> Term String -> Term String)
 parseApplication = do
     skipSpaces
     notFollowedBy (char ')')
     notFollowedBy anyReserved
     return App
+
+parseMultiplePatterns :: IParsec ([PatternBuilder String] -> [PatternBuilder String] -> [PatternBuilder String])
+parseMultiplePatterns = do
+    skipSpaces
+    notFollowedBy (char ')')
+    notFollowedBy anyReserved
+    return (++)
