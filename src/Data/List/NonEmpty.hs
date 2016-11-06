@@ -33,6 +33,9 @@ instance MonadFix NonEmpty where
   mfix f = case fix (f . head) of
              ~(x :| _) -> x :| mfix (tail . f)
 
+append :: NonEmpty a -> NonEmpty a -> NonEmpty a
+append (x :| xs ) (y :| ys) = x :| (xs ++ y : ys)
+
 singleton :: a -> NonEmpty a
 singleton x = x :| []
 
