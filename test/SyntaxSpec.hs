@@ -85,7 +85,10 @@ spec = do
         it "correctly parses function application" $
             let expression = "foo 123"
             in (parseSimple term expression) `shouldSucceedWith` (App (Var "foo") (Lit (IntLit 123)))
-        it "correctly parses a simple lambda expression" $
+        it "correctly parses a simple lambda expression without parentheses" $
+            let expression = "x -> bar x"
+            in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (App (Var "bar") (Var "x")))
+        it "correctly parses a simple lambda expression with parentheses" $
             let expression = "( x -> bar x )"
             in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (App (Var "bar") (Var "x")))
         it "correctly parses lambda inline application" $
@@ -184,6 +187,6 @@ spec = do
                firstLambda = lambda (varPattern "x") (Var "x")
                secondLambda = lambda (constructorPattern "Foo" []) (Var "y")
                thirdLambda = lambda (literalPattern $ IntLit 5) (Var "y")
-           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda, thirdLambda]))
 
 
