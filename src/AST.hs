@@ -143,6 +143,9 @@ data PatternBuilder a = PatternBuilder {
     bindings :: [a]
 }
 
+instance (Show a) => Show (PatternBuilder a) where
+    show (PatternBuilder build bindings) = "PatternBuilder " ++ (show $ build bindings) ++ " for " ++ (show bindings)
+
 -- | Create a new PatternBuilder for a pattern that matches the entire expression and captures it in the symbol passed
 -- | as the first argument.
 varPattern :: a -> PatternBuilder a

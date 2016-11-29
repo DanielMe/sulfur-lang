@@ -8,7 +8,6 @@ import Data.Text
 import AST
 import Data.List.NonEmpty (NonEmpty(..))
 
-
 shouldSucceedWith :: (Eq a, Show a) => (Either ParseError a) -> a -> Expectation
 shouldSucceedWith (Right result) expected = result `shouldBe` expected
 shouldSucceedWith (Left failure) _ = fail $ "Should succeed parsing but did not, result was " ++ (show failure)
@@ -22,7 +21,6 @@ parseSimple parser input = runP parser topLevel "testcase" input
 
 spec :: Spec
 spec = do
-
     describe "skipSpaces" $ do
         it "should successfully parse the empty string" $
             (parseSimple skipSpaces "") `shouldSucceedWith` ()
@@ -85,11 +83,14 @@ spec = do
         it "correctly parses function application" $
             let expression = "foo 123"
             in (parseSimple term expression) `shouldSucceedWith` (App (Var "foo") (Lit (IntLit 123)))
+        it "correctly parses function application in parentheses" $
+            let expression = "(foo 123 )"
+            in (parseSimple term expression) `shouldSucceedWith` (App (Var "foo") (Lit (IntLit 123)))
         it "correctly parses a simple lambda expression without parentheses" $
             let expression = "x -> bar x"
             in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (App (Var "bar") (Var "x")))
         it "correctly parses a simple lambda expression with parentheses" $
-            let expression = "( x -> bar x )"
+            let expression = "( x -> bar y )"
             in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (App (Var "bar") (Var "x")))
         it "correctly parses lambda inline application" $
             let expression = "( x -> bar x ) 5"
@@ -148,37 +149,50 @@ spec = do
             let expression = "x->\"5\""
             in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (Lit $ StringLit "5"))
     describe "Parsing of a pattern matching expression" $ do
-       it "parses a simple lamblda containing a pattern that is a literal" $
+       it "parses a simple lamblda containing a pattern that is an int literal" $
            let expression = "x 5 y -> 5"
            in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (matchLambda (literalPattern $ IntLit 5) (matchLambda (varPattern "y") (Lit $ IntLit 5))))
+       it "parses a simple lamblda containing a pattern that is a string literal" $
+           let expression = "x \"5\" y -> 5"
+           in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (matchLambda (literalPattern $ StringLit "5") (matchLambda (varPattern "y") (Lit $ IntLit 5))))
+       it "parses a simple lamblda containing a pattern that is a literal as a top level term" $
+           let expression = "x 5 y -> 5"
+           in (parseSimple topLevelTerm expression) `shouldSucceedWith` (matchLambda (varPattern "x") (matchLambda (literalPattern $ IntLit 5) (matchLambda (varPattern "y") (Lit $ IntLit 5))))
+       it "parses a simple pattern matching with two int patterns" $
+           let expression = unlines [
+                "5 -> 5 " ,
+                "6 -> 6 " ]
+               firstLambda = lambda (literalPattern $ IntLit 5)  (Lit $ IntLit 5)
+               secondLambda = lambda (literalPattern $ IntLit 6)  (Lit $ IntLit 6)
+           in (parseSimple topLevelTerm expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
        it "parses a pattern match consisting of a literal and a variable" $
            let expression = unlines [
                 "\"MyString\" ->   5" ,
                 "x            ->   6" ]
                firstLambda = lambda (literalPattern $ StringLit "MyString") (Lit $ IntLit 5)
                secondLambda = lambda (varPattern "x") (Lit $ IntLit 6)
-           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+           in (parseSimple topLevelTerm expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
        it "parses a pattern match consisting of two different constructors" $
            let expression = unlines [
                 "(Foo x) -> x" ,
                 "(Bar y z) -> y" ]
                firstLambda = lambda (constructorPattern "Foo" [varPattern "x"]) (Var "x")
                secondLambda = lambda (constructorPattern "Bar" [varPattern "y", varPattern "z"]) (Var "y")
-           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+           in (parseSimple topLevelTerm expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
        it "parses a pattern match consisting of constructors and literals" $
            let expression = unlines [
                 "(Foo \"x\") -> x" ,
                 "(Bar 1 2) -> y" ]
                firstLambda = lambda (constructorPattern "Foo" [literalPattern $ StringLit "x"]) (Var "x")
                secondLambda = lambda (constructorPattern "Bar" [literalPattern $ IntLit 1, literalPattern $ IntLit 2]) (Var "y")
-           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+           in (parseSimple topLevelTerm expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
        it "parses a pattern match consisting of nullary constructors" $
            let expression = unlines [
                 "Foo -> x" ,
                 "Bar -> y" ]
                firstLambda = lambda (constructorPattern "Foo" []) (Var "x")
                secondLambda = lambda (constructorPattern "Bar" []) (Var "y")
-           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
+           in (parseSimple topLevelTerm expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda]))
        it "parses a pattern match consisting of one variable, one constructor and one literal" $
            let expression = unlines [
                 "x -> x" ,
@@ -187,6 +201,4 @@ spec = do
                firstLambda = lambda (varPattern "x") (Var "x")
                secondLambda = lambda (constructorPattern "Foo" []) (Var "y")
                thirdLambda = lambda (literalPattern $ IntLit 5) (Var "y")
-           in (parseSimple term expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda, thirdLambda]))
-
-
+           in (parseSimple topLevelTerm expression) `shouldSucceedWith` (Match (firstLambda :| [secondLambda, thirdLambda]))

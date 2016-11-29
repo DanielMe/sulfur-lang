@@ -14,6 +14,7 @@ import Control.Monad
 import Debug.Trace (trace)
 import Data.List.NonEmpty ( NonEmpty(..) )
 import qualified Data.List.NonEmpty as NonEmpty
+import Debug.Trace (trace)
 
 -- Indentation sensitive Parsec monad.
 type IParsec a = Parsec Text ParseState a
@@ -45,7 +46,7 @@ endOfWord currentWord = peek next
             <|> changeOfWordType
             <|> (void $ char '"')
         changeOfWordType = case currentWord of
-            OperatorWord -> (void letter) <|> (void digit)
+            OperatorWord -> void alphaNum
             AlphanumericWord -> void operatorChar
 
 anyReserved = foldl1 (<|>) ((map reservedWord reservedWords) ++ (map reservedOperator reservedOperators))
@@ -60,7 +61,7 @@ reservedWord s = do
 
 reservedOperator :: String -> IParsec ()
 reservedOperator s = do
-    string s <?> ("reserved word '" ++ s ++ "'")
+    string s <?> ("reserved operator '" ++ s ++ "'")
     endOfWord OperatorWord
 
 peek :: IParsec a -> IParsec ()
@@ -106,23 +107,41 @@ parens contents = do
     pos <- getPosition
     char '('
     skipSpaces
-    result <- contents
+    result <- trace "Enter parens" $ contents
     skipSpaces
     char ')' <?> ("closing parathesis ')' for the opening parenthesis in line " ++ (show $ sourceLine pos) ++ " column " ++ (show $ sourceColumn pos))
-    return result
+    return $ trace "Leave parens" $ result
 
-identifier :: IParsec String
-identifier = do
-    name <- many1 letter
+constructorIdentifier :: IParsec String
+constructorIdentifier = do
+  first <- upper
+  name <- many alphaNum
+  endOfWord AlphanumericWord
+  guard (not $ name `elem` reservedWords) <?> "a constructor identifier (a sequence of alphanumeric letters starting with an upper case letter)"
+  return (first : name)
+
+typeIdentifier :: IParsec String
+typeIdentifier = do
+    first <- upper
+    name <- many alphaNum
     endOfWord AlphanumericWord
-    guard (not $ name `elem` reservedWords) <?> "an identifier"
-    return name
+    guard (not $ name `elem` reservedWords) <?> "a type identifier (a sequence of alphanumeric letters starting with an upper case letter)"
+    return (first : name)
+
+
+variableIdentifier :: IParsec String
+variableIdentifier = do
+    first <- lower
+    name <- many alphaNum
+    endOfWord AlphanumericWord
+    guard (not $ name `elem` reservedWords) <?> "a variable identifier that is not a reserved word, '" ++ name ++ "' is a reserved word."
+    return (first : name)
 
 operator :: IParsec String
 operator = do
-    name <- many1 letter
+    name <- many1 operatorChar
     endOfWord OperatorWord
-    guard (not $ name `elem` reservedWords) <?> "an operator"
+    guard (not $ name `elem` reservedOperators) <?> "an operator that is not a reserved word, '" ++ name ++ "' is a reserved operator."
     return name
 
 escapedCharacter :: IParsec String
@@ -202,11 +221,12 @@ definition :: IParsec (Term String)
 definition = withIndentation $ do
     reservedWord "define"
     nextWordOrIndented $ do
-       name <- identifier
+       name <- variableIdentifier
        (parsedTypeTerm, parsedValueTerm) <- nextWordOrIndented $ do
          reservedWord "of"
          parsedTypeTerm <- nextWordOrIndented typeTerm
-         parsedValueTerm <- nextWordOrAligned $ (reservedWord "as") >> (nextWordOrIndented term)
+         nextWordOrAligned $ (reservedWord "as")
+         parsedValueTerm <- (nextWord term) <|> (nextLineIndented topLevelTerm)
          return (parsedTypeTerm, parsedValueTerm)
        return $ define name (Just parsedTypeTerm) parsedValueTerm
 
@@ -221,7 +241,8 @@ patternOnNextLine = do
 
 
 multilinePattern :: IParsec (Term String)
-multilinePattern = patternMatching `chainl1` patternOnNextLine
+multilinePattern = (patternMatching `chainl1` (patternOnNextLine <?> "continuation of multiline pattern"))
+                <?> "a pattern matching spanning multiple lines"
 
 
 -- | Parses a term at the top level relative to a 'define' expression
@@ -256,10 +277,14 @@ topLevelTerm = try multilinePattern
 -- The second expression is interpreted as a lambda with three input variables and one literal pattern
 -- which matches the value 5. (This will then be resolved into 4 successive pattern matching expressions.)
 term :: IParsec (Term String)
-term = try patternMatching <|> try simpleTermOrApplication
+term = do
+    result <- (try patternMatching <?> "a pattern matching expression")
+         <|> (try simpleTermOrApplication <?> "a term that is not a pattern matching" )
+         <?> "a term (i.e. a pattern matching, an application, a variable or a literal)"
+    trace ("Matched term: " ++ (show result)) $ return result
 
 typeTerm :: IParsec (Term String)
-typeTerm = fmap Var identifier -- TODO parse an actual type expression
+typeTerm = fmap Var typeIdentifier -- TODO parse an actual type expression
 
 -- | Parse a nonempty list of terms
 --
@@ -277,25 +302,35 @@ typeTerm = fmap Var identifier -- TODO parse an actual type expression
 -- (App (Var "a") (App (Var "b") (Var "c"))).
 --
 simpleTermOrApplication :: IParsec (Term String)
-simpleTermOrApplication = simpleTerm `chainl1` (try parseApplication)
+simpleTermOrApplication = do
+    firstTerm <- simpleTerm
+    skipSpaces
+    otherTerms <- chainl (try $ fmap pure simpleTerm) spaceSeparated []
+    return $ foldl (App) firstTerm otherTerms
+
 
 -- | Parses a simple term which is defined as a term that is not an application or a lambda abstraction.
 --
 -- A simple term is hence either a literal or a variable. It can also be a pair of parentheses which
 -- in turn contain a rich term which can be an application or a lambda abstraction.
-simpleTerm = (parens term)
-             <|> try parseString
-             <|> try parseInteger
-             <|> try (fmap Var identifier)
+simpleTerm = do
+    result <- (parens term)
+            <|> (try parseString <?> "a string literal")
+            <|> (try parseInteger <?> "an integer literal")
+            <|> (try (fmap Var variableIdentifier) <?> "a variable identifier")
+            <|> (try (fmap Var operator) <?> "an operator")
+    trace ("Matched simple term " ++ (show result)) $ return result
 
 patternMatching :: IParsec (Term String)
 patternMatching = do
-                  patterns <- (fmap pure simplePatternTerm) `chainl1` (try parseMultiplePatterns)
+                  firstPattern <- simplePatternTerm
+                  skipSpaces
+                  otherPatterns <- chainl (try $ fmap pure simplePatternTerm) spaceSeparated []
                   skipSpaces
                   reservedOperator "->"
                   skipSpaces
-                  boundTerm <- term
-                  return $ foldr matchLambda boundTerm patterns
+                  boundTerm <- term <?> "a term on the right hand side of the -> operator which is bound by the patterns"
+                  return $ foldr matchLambda boundTerm (firstPattern:otherPatterns)
 
 -- | Any pattern including a constructor pattern
 patternTerm :: IParsec (PatternBuilder String)
@@ -305,30 +340,30 @@ patternTerm = try parseConstructorPattern
 
 -- | A pattern term without constructor patterns (unless wrapped in parentheses)
 simplePatternTerm :: IParsec (PatternBuilder String)
-simplePatternTerm = (parens patternTerm)
-            <|> try parseIntPattern
-            <|> try parseStringPattern
-            <|> try parseVariablePattern
+simplePatternTerm = do
+    result <- (parens patternTerm)
+        <|> try parseIntPattern
+        <|> try parseStringPattern
+        <|> try parseVariablePattern
+        <|> try parseSimpleConstructorPattern
+    trace ("Matched simple pattern term: " ++ (show result)) $ return result
 
 parseVariablePattern :: IParsec (PatternBuilder String)
-parseVariablePattern = fmap varPattern identifier
+parseVariablePattern = fmap varPattern variableIdentifier
+
+parseSimpleConstructorPattern :: IParsec (PatternBuilder String)
+parseSimpleConstructorPattern = do
+    constructor <- constructorIdentifier
+    return $ constructorPattern constructor []
+
 
 parseConstructorPattern :: IParsec (PatternBuilder String)
 parseConstructorPattern = do
-    constructor <- identifier
-    subPatterns <- chainl (fmap pure simplePatternTerm) (try parseMultiplePatterns) []
+    constructor <- constructorIdentifier
+    subPatterns <- chainl (try $ fmap pure simplePatternTerm) spaceSeparated []
     return $ constructorPattern constructor subPatterns
 
-parseApplication :: IParsec (Term String -> Term String -> Term String)
-parseApplication = do
+spaceSeparated :: IParsec ([a] -> [a] -> [a])
+spaceSeparated = do
     skipSpaces
-    notFollowedBy (char ')')
-    notFollowedBy anyReserved
-    return App
-
-parseMultiplePatterns :: IParsec ([PatternBuilder String] -> [PatternBuilder String] -> [PatternBuilder String])
-parseMultiplePatterns = do
-    skipSpaces
-    notFollowedBy (char ')')
-    notFollowedBy anyReserved
     return (++)
