@@ -64,14 +64,13 @@ topLevel = ParseState $ unsafePos 1
 parseTopLevel :: IParsec a -> IParsec a
 parseTopLevel p = put topLevel >> p
 
-
 reservedWord :: String -> IParsec ()
 reservedWord s = lexeme $ do
     string s <?> ("reserved word '" ++ s ++ "'")
     endOfWord AlphanumericWord
 
 reservedOperator :: String -> IParsec ()
-reservedOperator s = do
+reservedOperator s = lexeme $ do
     string s <?> ("reserved operator '" ++ s ++ "'")
     endOfWord OperatorWord
 

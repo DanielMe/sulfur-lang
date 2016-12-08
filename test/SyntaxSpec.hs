@@ -92,7 +92,7 @@ spec = do
             in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (App (Var "bar") (Var "x")))
         it "correctly parses a simple lambda expression with parentheses" $
             let expression = "( x -> bar y )"
-            in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (App (Var "bar") (Var "x")))
+            in (parseSimple term expression) `shouldSucceedWith` (matchLambda (varPattern "x") (App (Var "bar") (Var "y")))
         it "correctly parses lambda inline application" $
             let expression = "( x -> bar x ) 5"
             in (parseSimple term expression) `shouldSucceedWith` (App (matchLambda (varPattern "x") (App (Var "bar") (Var "x"))) (Lit (IntLit 5)))
