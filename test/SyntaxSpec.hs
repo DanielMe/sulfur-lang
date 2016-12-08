@@ -3,42 +3,43 @@ module SyntaxSpec where
 import Prelude hiding (unlines)
 import Test.Hspec
 import Syntax
-import Text.Parsec
+import Text.Megaparsec hiding (failure)
 import Data.Text
-import AST
 import Data.List.NonEmpty (NonEmpty(..))
+import AST
+import Control.Monad.State
 
-shouldSucceedWith :: (Eq a, Show a) => (Either ParseError a) -> a -> Expectation
+shouldSucceedWith :: (Eq a, Show a) => (Either (ParseError (Token Text) Dec) a) -> a -> Expectation
 shouldSucceedWith (Right result) expected = result `shouldBe` expected
-shouldSucceedWith (Left failure) _ = fail $ "Should succeed parsing but did not, result was " ++ (show failure)
+shouldSucceedWith (Left failure) _ = fail $ "Should succeed parsing but did not, result was " ++ (parseErrorPretty failure)
 
-shouldFail :: (Show a) => (Either ParseError a) -> Expectation
+shouldFail :: (Show a) => (Either (ParseError (Token Text) Dec) a) -> Expectation
 shouldFail (Right result) = fail $ "Should fail parsing but result was " ++ (show result)
 shouldFail (Left _) = return ()
 
-parseSimple :: IParsec a -> Text -> Either ParseError a
-parseSimple parser input = runP parser topLevel "testcase" input
+parseSimple :: IParsec a -> Text -> Either (ParseError (Token Text) Dec) a
+parseSimple parser input = runParser (evalStateT parser topLevel) "testcase" input
 
 spec :: Spec
 spec = do
-    describe "skipSpaces" $ do
+    describe "skipWhiteSpace" $ do
         it "should successfully parse the empty string" $
-            (parseSimple skipSpaces "") `shouldSucceedWith` ()
+            (parseSimple skipWhiteSpace "") `shouldSucceedWith` ()
         it "should successfully parse a string of spaces" $
-            (parseSimple skipSpaces "       ") `shouldSucceedWith` ()
+            (parseSimple skipWhiteSpace "       ") `shouldSucceedWith` ()
 
     describe "nextWordOrIndented" $ do
         it "correctly parses a word on the same line" $
             let input = "a      b" :: Text
-                parser = string "a" >> (nextWordOrIndented $ char 'b')
+                parser = (lexeme $ string "a") >> (nextWordOrIndented $ char 'b')
             in (parseSimple parser input) `shouldSucceedWith` 'b'
         it "correctly parses a word on the next line" $
             let input = unlines [ "a   ", "  b" ] :: Text
-                parser = char 'a' >> (nextWordOrIndented $ char 'b')
+                parser = (lexeme $ char 'a') >> (nextWordOrIndented $ char 'b')
             in (parseSimple parser input) `shouldSucceedWith` 'b'
         it "correctly parses a define with identifier on next line" $
             let input = unlines [ "define   ", "  b" ] :: Text
-                parser = string "define" >> (nextWordOrIndented $ char 'b')
+                parser = (lexeme $ string "define") >> (nextWordOrIndented $ char 'b')
             in (parseSimple parser input) `shouldSucceedWith` 'b'
 
     describe "definition parsing" $ do

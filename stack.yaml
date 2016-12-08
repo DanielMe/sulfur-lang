@@ -2,6 +2,6 @@ flags: {}
 extra-package-dbs: []
 packages:
 - '.'
-extra-deps: []
+extra-deps:
+- megaparsec-5.1.2
 resolver: lts-6.13
-

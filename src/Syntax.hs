@@ -1,27 +1,33 @@
 
 module Syntax where
 import Prelude hiding (replicate)
-import Text.Parsec.Text
-import Text.Parsec
-import qualified Text.Parsec.Expr as Ex
-import qualified Text.Parsec.Token as Tok
-import Text.ParserCombinators.Parsec.Char
-import Text.ParserCombinators.Parsec.Language (emptyDef)
-import Data.Text hiding (concat, foldl1, map, foldr, foldl)
+import Text.Megaparsec.Text
+import Text.Megaparsec
+import qualified Text.Megaparsec.Expr as Ex
+import qualified Text.Megaparsec.Lexer as Lex
+import Data.Text hiding (concat, foldl1, map, foldr, foldl, empty)
 import AST
 import Data.Functor.Identity
 import Control.Monad
-import Debug.Trace (trace)
 import Data.List.NonEmpty ( NonEmpty(..) )
 import qualified Data.List.NonEmpty as NonEmpty
-import Debug.Trace (trace)
+import Text.Megaparsec.Pos
+import Control.Monad.State
+import Control.Applicative (empty)
 
--- Indentation sensitive Parsec monad.
-type IParsec a = Parsec Text ParseState a
+data ParseState = ParseState {
+    indentationLevel :: Pos
+} deriving (Show, Eq)
 
-data ParseState = ParseState
-  { indents :: Column
-  } deriving (Show)
+type IParsec = StateT ParseState (Parsec Dec Text)
+
+indentationStep :: Pos -> Pos
+indentationStep x = unsafePos $ (unPos x) + 2
+
+skipWhiteSpace :: IParsec ()
+skipWhiteSpace = Lex.space (char ' ' >> return ()) empty empty
+
+skipWhiteSpaceAndNewlines = Lex.space (char ' ' <|> newline >> return ()) empty empty
 
 reservedWords = [
          "define"
@@ -33,7 +39,8 @@ reservedOperators = [ "->" ]
 
 data WordType = OperatorWord | AlphanumericWord
 
-operatorChar = oneOf "+=-*^-~!@#$%&|\\/<>.,`[]{}':;±§"
+operatorChar :: IParsec Char
+operatorChar = oneOf ("+=-*^-~!@#$%&|\\/<>.,`[]{}':;±§" :: String)
 
 endOfWord :: WordType -> IParsec ()
 endOfWord currentWord = peek next
@@ -46,16 +53,20 @@ endOfWord currentWord = peek next
             <|> changeOfWordType
             <|> (void $ char '"')
         changeOfWordType = case currentWord of
-            OperatorWord -> void alphaNum
+            OperatorWord -> void alphaNumChar
             AlphanumericWord -> void operatorChar
 
 anyReserved = foldl1 (<|>) ((map reservedWord reservedWords) ++ (map reservedOperator reservedOperators))
 
 topLevel :: ParseState
-topLevel = ParseState 1
+topLevel = ParseState $ unsafePos 1
+
+parseTopLevel :: IParsec a -> IParsec a
+parseTopLevel p = put topLevel >> p
+
 
 reservedWord :: String -> IParsec ()
-reservedWord s = do
+reservedWord s = lexeme $ do
     string s <?> ("reserved word '" ++ s ++ "'")
     endOfWord AlphanumericWord
 
@@ -67,24 +78,24 @@ reservedOperator s = do
 peek :: IParsec a -> IParsec ()
 peek f = (void . try . lookAhead) f
 
+lexeme :: IParsec a -> IParsec a
+lexeme = Lex.lexeme skipWhiteSpace
+
+signed :: (Num a) => IParsec a -> IParsec a
+signed = Lex.signed empty
+
 parseInteger :: IParsec (Term a)
-parseInteger = integerLiteral <?> "an integer literal"
-    where
-        integerLiteral = do
-            f <- parseSign
-            n <- parseNat
-            return $ Lit (IntLit $ f n)
+parseInteger = lexeme $ do
+    n <- signed Lex.integer
+    return $ Lit (IntLit n)
 
 parseIntPattern :: IParsec (PatternBuilder a)
-parseIntPattern = integerLiteral <?> "an integer literal"
-    where
-        integerLiteral = do
-            f <- parseSign
-            n <- parseNat
-            return $ literalPattern (IntLit $ f n)
+parseIntPattern = lexeme $ do
+    n <- signed Lex.integer
+    return $ literalPattern (IntLit n)
 
 parseStringPattern :: IParsec (PatternBuilder a)
-parseStringPattern = stringLiteral  <?> "a string literal"
+parseStringPattern = lexeme stringLiteral <?> "a string literal"
    where
        stringLiteral = do
            char '"'
@@ -92,54 +103,44 @@ parseStringPattern = stringLiteral  <?> "a string literal"
            char '"'
            return $ literalPattern $ StringLit (concat strings)
 
-parseNat :: IParsec Integer
-parseNat = do
-           intAsString <- many1 digit
-           endOfWord AlphanumericWord
-           return $ read intAsString
-
-parseSign :: IParsec (Integer -> Integer)
-parseSign = (char '-' >> return negate)
-         <|> return id
-
 parens :: IParsec a -> IParsec a
-parens contents = do
+parens contents = lexeme $ do
     pos <- getPosition
     char '('
-    skipSpaces
-    result <- trace "Enter parens" $ contents
-    skipSpaces
-    char ')' <?> ("closing parathesis ')' for the opening parenthesis in line " ++ (show $ sourceLine pos) ++ " column " ++ (show $ sourceColumn pos))
-    return $ trace "Leave parens" $ result
+    skipWhiteSpace
+    result <- contents
+    skipWhiteSpace
+    char ')'
+    return result
 
 constructorIdentifier :: IParsec String
-constructorIdentifier = do
-  first <- upper
-  name <- many alphaNum
+constructorIdentifier = lexeme $ do
+  first <- upperChar
+  name <- many alphaNumChar
   endOfWord AlphanumericWord
   guard (not $ name `elem` reservedWords) <?> "a constructor identifier (a sequence of alphanumeric letters starting with an upper case letter)"
   return (first : name)
 
 typeIdentifier :: IParsec String
-typeIdentifier = do
-    first <- upper
-    name <- many alphaNum
+typeIdentifier = lexeme $ do
+    first <- upperChar
+    name <- many alphaNumChar
     endOfWord AlphanumericWord
     guard (not $ name `elem` reservedWords) <?> "a type identifier (a sequence of alphanumeric letters starting with an upper case letter)"
     return (first : name)
 
 
 variableIdentifier :: IParsec String
-variableIdentifier = do
-    first <- lower
-    name <- many alphaNum
+variableIdentifier = lexeme $ do
+    first <- lowerChar
+    name <- many alphaNumChar
     endOfWord AlphanumericWord
     guard (not $ name `elem` reservedWords) <?> "a variable identifier that is not a reserved word, '" ++ name ++ "' is a reserved word."
     return (first : name)
 
 operator :: IParsec String
-operator = do
-    name <- many1 operatorChar
+operator = lexeme $ do
+    name <- some operatorChar
     endOfWord OperatorWord
     guard (not $ name `elem` reservedOperators) <?> "an operator that is not a reserved word, '" ++ name ++ "' is a reserved operator."
     return name
@@ -147,17 +148,17 @@ operator = do
 escapedCharacter :: IParsec String
 escapedCharacter = do
     d <- char '\\'
-    c <- oneOf "\\\"0nrvtbf" -- all the characters which can be escaped
+    c <- oneOf ("\\\"0nrvtbf" :: String)-- all the characters which can be escaped
     return [d, c]
 
 unescapedCharacter :: IParsec Char
-unescapedCharacter = noneOf "\\\"\0\n\r\v\t\b\f"
+unescapedCharacter = noneOf ("\\\"\0\n\r\v\t\b\f" :: String)
 
 character :: IParsec String
 character = fmap return unescapedCharacter <|> escapedCharacter
 
 parseString :: IParsec (Term a)
-parseString = stringLiteral <?> "a string literal"
+parseString = lexeme stringLiteral <?> "a string literal"
     where
         stringLiteral = do
             char '"'
@@ -165,55 +166,39 @@ parseString = stringLiteral <?> "a string literal"
             char '"'
             return $ Lit $ StringLit (concat strings)
 
-skipSpaces :: IParsec ()
-skipSpaces = skipMany $ char ' '
-
-skipBlankLine :: IParsec ()
-skipBlankLine = skipSpaces >> newline >> return ()
-
-skipBlankLines :: IParsec ()
-skipBlankLines = (many $ try skipBlankLine) >> return ()
-
-atLeastOneSpace :: IParsec ()
-atLeastOneSpace = (char ' ' >> skipSpaces) <?> "at least one space"
-
 withIndentation :: IParsec a -> IParsec a
-withIndentation m = do
-    cur <- indents <$> getState
-    pos <- sourceColumn <$> getPosition
-    modifyState $ \st -> st { indents = pos }
-    res <- m
-    modifyState $ \st -> st { indents = cur }
-    return res
+withIndentation p = do
+    previousIndentationLevel <- indentationLevel <$> get
+    currentPosition <- Lex.indentLevel
+    modify $ \ state -> state { indentationLevel = currentPosition }
+    result <- p
+    modify $ \ state -> state { indentationLevel = previousIndentationLevel }
+    return result
 
-ensureIndentation :: (Column -> Column -> Bool) -> IParsec ()
-ensureIndentation compare = do
-  column <- sourceColumn <$> getPosition
-  current <- indents <$> getState
-  guard (column `compare` current)
+indentGuard = Lex.indentGuard skipWhiteSpaceAndNewlines EQ
 
-indented :: IParsec ()
-indented = ensureIndentation (\ column current -> column == current + 2) <?> "an indented block"
+indented :: IParsec Pos
+indented = do
+    referenceLevel <- indentationLevel <$> get
+    indentGuard (indentationStep referenceLevel)
 
-align :: IParsec ()
-align = ensureIndentation (==) <?> "a block on the same indentation level"
-
-
-nextWord :: IParsec a -> IParsec a
-nextWord nextParser = skipSpaces >> nextParser
+align :: IParsec Pos
+align = do
+    referenceLevel <- indentationLevel <$> get
+    indentGuard (referenceLevel)
 
 nextLineIndented :: IParsec a -> IParsec a
-nextLineIndented nextParser = skipSpaces >> newline >> skipBlankLines >> skipSpaces >> indented >> (withIndentation nextParser)
+nextLineIndented nextParser = skipWhiteSpaceAndNewlines >> indented >> (withIndentation nextParser)
 
 nextLineAligned :: IParsec a -> IParsec a
-nextLineAligned nextParser = skipSpaces >> newline >> skipBlankLines >> skipSpaces >> align >> (withIndentation nextParser)
+nextLineAligned nextParser = skipWhiteSpaceAndNewlines >> align >> nextParser
 
 nextWordOrIndented :: IParsec a -> IParsec a
-nextWordOrIndented nextParser = try (nextWord nextParser)
+nextWordOrIndented nextParser = try nextParser
                             <|> try (nextLineIndented nextParser)
 
 nextWordOrAligned :: IParsec a -> IParsec a
-nextWordOrAligned nextParser =  try (nextWord nextParser)
+nextWordOrAligned nextParser =  try nextParser
                             <|> try (nextLineAligned nextParser)
 
 
@@ -226,23 +211,23 @@ definition = withIndentation $ do
          reservedWord "of"
          parsedTypeTerm <- nextWordOrIndented typeTerm
          nextWordOrAligned $ (reservedWord "as")
-         parsedValueTerm <- (nextWord term) <|> (nextLineIndented topLevelTerm)
+         parsedValueTerm <- term <|> (nextLineIndented topLevelTerm)
          return (parsedTypeTerm, parsedValueTerm)
        return $ define name (Just parsedTypeTerm) parsedValueTerm
 
-patternOnNextLine :: IParsec ((Term String) -> (Term String) -> (Term String))
-patternOnNextLine = do
-    skipSpaces
-    newline
-    skipBlankLines
-    skipSpaces
-    align
-    return $ \ (Match xs) (Match ys) -> (Match $ NonEmpty.append xs ys)
+alignedPattern :: IParsec (Lambda String)
+alignedPattern = do
+    skipWhiteSpaceAndNewlines >> align
+    (Match (pattern :| _ )) <- patternMatching
+    return pattern
+
 
 
 multilinePattern :: IParsec (Term String)
-multilinePattern = (patternMatching `chainl1` (patternOnNextLine <?> "continuation of multiline pattern"))
-                <?> "a pattern matching spanning multiple lines"
+multilinePattern = do
+    (Match (firstPattern :| _ )) <- patternMatching
+    otherPatterns <- many alignedPattern
+    return $ Match (firstPattern :| otherPatterns)
 
 
 -- | Parses a term at the top level relative to a 'define' expression
@@ -277,11 +262,9 @@ topLevelTerm = try multilinePattern
 -- The second expression is interpreted as a lambda with three input variables and one literal pattern
 -- which matches the value 5. (This will then be resolved into 4 successive pattern matching expressions.)
 term :: IParsec (Term String)
-term = do
-    result <- (try patternMatching <?> "a pattern matching expression")
-         <|> (try simpleTermOrApplication <?> "a term that is not a pattern matching" )
-         <?> "a term (i.e. a pattern matching, an application, a variable or a literal)"
-    trace ("Matched term: " ++ (show result)) $ return result
+term =  try patternMatching
+     <|> try simpleTermOrApplication
+     <?> "a term (i.e. a pattern matching, an application, a variable or a literal)"
 
 typeTerm :: IParsec (Term String)
 typeTerm = fmap Var typeIdentifier -- TODO parse an actual type expression
@@ -304,8 +287,8 @@ typeTerm = fmap Var typeIdentifier -- TODO parse an actual type expression
 simpleTermOrApplication :: IParsec (Term String)
 simpleTermOrApplication = do
     firstTerm <- simpleTerm
-    skipSpaces
-    otherTerms <- chainl (try $ fmap pure simpleTerm) spaceSeparated []
+    skipWhiteSpace
+    otherTerms <- many (try simpleTerm)
     return $ foldl (App) firstTerm otherTerms
 
 
@@ -313,22 +296,17 @@ simpleTermOrApplication = do
 --
 -- A simple term is hence either a literal or a variable. It can also be a pair of parentheses which
 -- in turn contain a rich term which can be an application or a lambda abstraction.
-simpleTerm = do
-    result <- (parens term)
-            <|> (try parseString <?> "a string literal")
-            <|> (try parseInteger <?> "an integer literal")
-            <|> (try (fmap Var variableIdentifier) <?> "a variable identifier")
-            <|> (try (fmap Var operator) <?> "an operator")
-    trace ("Matched simple term " ++ (show result)) $ return result
+simpleTerm = (parens term)
+        <|> (try parseString <?> "a string literal")
+        <|> (try parseInteger <?> "an integer literal")
+        <|> (try (fmap Var variableIdentifier) <?> "a variable identifier")
+        <|> (try (fmap Var operator) <?> "an operator")
 
 patternMatching :: IParsec (Term String)
 patternMatching = do
                   firstPattern <- simplePatternTerm
-                  skipSpaces
-                  otherPatterns <- chainl (try $ fmap pure simplePatternTerm) spaceSeparated []
-                  skipSpaces
+                  otherPatterns <- many (try $ simplePatternTerm)
                   reservedOperator "->"
-                  skipSpaces
                   boundTerm <- term <?> "a term on the right hand side of the -> operator which is bound by the patterns"
                   return $ foldr matchLambda boundTerm (firstPattern:otherPatterns)
 
@@ -340,13 +318,11 @@ patternTerm = try parseConstructorPattern
 
 -- | A pattern term without constructor patterns (unless wrapped in parentheses)
 simplePatternTerm :: IParsec (PatternBuilder String)
-simplePatternTerm = do
-    result <- (parens patternTerm)
+simplePatternTerm = (parens patternTerm)
         <|> try parseIntPattern
         <|> try parseStringPattern
         <|> try parseVariablePattern
         <|> try parseSimpleConstructorPattern
-    trace ("Matched simple pattern term: " ++ (show result)) $ return result
 
 parseVariablePattern :: IParsec (PatternBuilder String)
 parseVariablePattern = fmap varPattern variableIdentifier
@@ -360,10 +336,5 @@ parseSimpleConstructorPattern = do
 parseConstructorPattern :: IParsec (PatternBuilder String)
 parseConstructorPattern = do
     constructor <- constructorIdentifier
-    subPatterns <- chainl (try $ fmap pure simplePatternTerm) spaceSeparated []
+    subPatterns <- many (try simplePatternTerm)
     return $ constructorPattern constructor subPatterns
-
-spaceSeparated :: IParsec ([a] -> [a] -> [a])
-spaceSeparated = do
-    skipSpaces
-    return (++)

@@ -1,13 +1,13 @@
 name:                 SulfurLang
 version:              0.1.0.0
-synopsis:             
+synopsis:
 -- description:
 -- license:
 -- license-file:
-homepage:             
+homepage:
 author:               Daniel Mescheder
 maintainer:           daniel.mescheder@realimpactanalytics.com
-category:             
+category:
 -- copyright:
 build-type:           Simple
 -- extra-source-files:
@@ -20,10 +20,11 @@ library
   extensions:           OverloadedStrings
   build-depends:        base >= 4.8,
                         prelude-extras >= 0.4,
-                        parsec,
+                        megaparsec >= 5.0,
                         bound,
                         containers,
                         transformers,
+                        mtl >= 2.2,
                         text
   hs-source-dirs:       src
 
@@ -37,9 +38,10 @@ test-suite spec
   build-depends:        base >= 4.8,
                         hspec == 2.*,
                         prelude-extras >= 0.4,
-                        parsec,
+                        megaparsec >= 5.0,
                         bound,
                         containers,
                         transformers,
+                        mtl >= 2.2,
                         text,
                         SulfurLang
