@@ -225,7 +225,7 @@ alignedPattern = do
 multilinePattern :: IParsec (Term String)
 multilinePattern = do
     (Match (firstPattern :| _ )) <- patternMatching
-    otherPatterns <- many alignedPattern
+    otherPatterns <- many (try alignedPattern)
     return $ Match (firstPattern :| otherPatterns)
 
 
