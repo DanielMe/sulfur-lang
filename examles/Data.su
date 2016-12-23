@@ -1,0 +1,52 @@
+define Person as Data
+    | 'firstName => Lazy (Link String)
+    | 'lastName => Link String
+    | 'age => Integer
+
+define fullName person
+    as person.get('firstName) + " " + person.get('lastName)
+
+define adults persons
+    where 
+        adults : c Person -> c Person
+        IsCollection c
+    as persons.where('age >= 18).map('firstName + ' ' + 'lastName)
+
+define Tree a
+    || A simple binary tree that is either a `Node` linking to other branches
+    || or a `Leaf` that has no further links.
+    as Node a | Leaf a
+
+define Leaf a as Data ['value => a]
+define Node a as Data
+    | 'left => Link (Node a)
+    | 'right => Link (Node a)
+    | 'value => a
+
+define Vector n t
+    || A vector of fixed length `n` that contains elements of type `t`.
+    where
+        t : Type
+        n : Nat
+        Vector n t : Type
+    as t.match
+        Boolean -> (boolArray n)
+        _       -> (zeroArray n)
+
+define makeWebPage name text
+    where
+        makeWebPage : String -> String -> DOM
+    as name -> render
+        | h1 [name]
+        | div
+        |   p [text]
+        | div
+        |   footer
+
+define jsonObject
+  as buildJson
+     | "root" =>
+     |   "sub_object" =>
+     |     1
+     |     2
+     |     3

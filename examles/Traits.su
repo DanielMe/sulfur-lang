@@ -1,3 +1,15 @@
+trait Monad m where
+    flatMap : (m a) -> (a -> m b) -> (m b)
+    unit : a -> m a
+
+define foo as 5
+
+trait def<foo> where
+    foo : Int
+
+define val<foo> of Instance def<foo> where
+    foo = 5
+
 trait (Monad m) requires
   | 'flatMap of (m a) -> (a -> m b) -> (m b)
   | 'unit of a -> (m a)
@@ -42,4 +54,3 @@ define map
   as
     | (NonEmpty entry rest) f -> ( NonEmpty (f entry) (rest.map f) )
     | Empty f -> Empty
-

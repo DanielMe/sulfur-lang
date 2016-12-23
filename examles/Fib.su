@@ -1,62 +1,15 @@
-define fib
-  of Integer -> Integer
-  as
-    0 -> 0
-    1 -> 1
-    n -> (fib (n - 1)) + (fib (n-2))
+define fib n
+    || computes the `n`-th fibonacci number
+    where
+        fib : Integer -> Integer
+    as n.match
+        0 -> 0
+        1 -> 1
+        _ -> (fib (n - 1)) + (fib (n-2))
 
 
-define add_twice
-   let T : * be Numeric | the type of the arguments
-
-   add_twice T : T -> T -> T
-   add_twice x y = x + y + y
-
-define Tree, Node, Leaf
-   | A naive implementation of a binary tree
-   | arbitrary data can be stored at the nodes.
-
-   let A | the contents stored at the nodes
-
-   Tree A : CoData
-
-   Node A : Tree A -> A -> Tree A -> Tree A
-   Node left x right = { (lazy left) x (lazy right) }
-
-   Leaf A : Tree A
-   Leaf = {}
-
-
-define Set, FromTree
-	let A | the type of the contents stored in the set
-	let O : Ordering A | An ordering defined over `A`
-	Set O A : Data
-
-	FromTree: O -> Tree A -> Set O A
-	FromTree ordering tree = { tree }
-
-define Vector
-   let T : Nat | the length of the vector
-
-   ZeroVector T : Data
-   ZeroVector
-
-define makeWebPage
-   of String -> DOM
-   as name -> render
-      | h1 [name]
-      | div
-      |   p [text]
-      | div
-      |   footer
-      |     bla
-      |     bla
-
-define jsonObject
-  of JSON
-  as buildJson
-     | "root" =>
-     |   "sub_object" =>
-     |     1
-     |     2
-     |     3
+define add_twice x y
+    where
+        add_twice : T -> T -> T
+        T is Numeric
+    as x + y + y

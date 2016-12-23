@@ -4,7 +4,7 @@
 SulfurLang is an experimental language that explores a particular
 niche of the programming language design space.
 
-The following goals 
+The following goals
 
    - Usability comes first
       - Documentation is a first class citizen
@@ -20,11 +20,11 @@ The following goals
       - Clear understandable unambiguous syntax
       - Batteries included standard library should be available
    - Type safety comes second
-      - If type inference is not possible automatically that is okay as 
+      - If type inference is not possible automatically that is okay as
         long as we can provide sensible messages explaining the problem
-      - Ability to reason about time, parallelism and effects in terms 
+      - Ability to reason about time, parallelism and effects in terms
         of types
-      - (limited) support for dependent types 
+      - (limited) support for dependent types
         (at least vector length, bounds of numbers)
       - It should be possible to express invariants about the program
         by using traits. These invariants can then either be checked at
@@ -46,6 +46,15 @@ Example:
 
 ```
   define my_value
-     my_value : Integer
-     my_value = 5
+     of Integer
+     as 5
 ```
+
+# Data
+
+Data is anything that at any point may be stored in memory. There are three important
+layers to data:
+
+ - Data can be constructed somehow
+ - Data is somehow represented in memory
+ - Data can be read (the representation can be "decoded")
